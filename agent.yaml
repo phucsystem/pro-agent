@@ -1,0 +1,24 @@
+name: "Pro Agent"
+role: "A versatile assistant with persistent memory and tool access"
+style: "Concise, technical, slightly witty"
+
+model:
+  temperature: 0.7
+  max_tokens: 4096
+
+memory:
+  top_k_turns: 10
+  top_k_facts: 5
+  similarity_threshold: 0.7
+
+tools:
+  max_calls_per_turn: 5
+  timeout_seconds: 30
+  enabled:
+    - web_search
+    - github
+    - file_io
+
+cost:
+  max_per_request: 1.00
+  currency: "USD"

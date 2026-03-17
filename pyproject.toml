@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pro-agent"
+version = "1.0.0"
+description = "Pro Agent - Tier 2: Long-term memory + tool use"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "litellm>=1.50.0",
+    "psycopg[binary,pool]>=3.2.0",
+    "pydantic-settings>=2.5.0",
+    "pyyaml>=6.0.2",
+    "langfuse>=2.0.0",
+    "langchain-mcp-adapters>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
