@@ -56,6 +56,45 @@ None. All planned features implemented as specified:
 
 ---
 
+## Recent Changes (Latest)
+
+### DeepSeek R1 Support Added
+
+**What:** Agent now supports DeepSeek's reasoning model with reasoning_content extraction.
+
+**Implementation (agent/nodes.py):**
+- Detects `reasoning_content` field from LLM response
+- Wraps reasoning in `<think>...</think>` blocks automatically
+- Works with both `deepseek-chat` and `deepseek-reasoner` models
+
+**Configuration:**
+```bash
+# For DeepSeek Reasoner (R1)
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-reasoner
+
+# For standard DeepSeek Chat
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-chat
+```
+
+### LiteLLM Provider/Model Routing
+
+**What:** LLM model routing now uses provider prefix format.
+
+**Implementation (agent/nodes.py):**
+```python
+litellm_model = f"{provider}/{model_name}"  # e.g. "deepseek/deepseek-chat"
+```
+
+**Examples:**
+- `deepseek/deepseek-chat` — DeepSeek Chat model
+- `deepseek/deepseek-reasoner` — DeepSeek Reasoner (R1)
+- `openai/gpt-4o` — OpenAI GPT-4o
+- `openrouter/deepseek/deepseek-chat` — DeepSeek via OpenRouter
+
+---
+
 ## Configuration Highlights
 
 ### Configurable Embeddings

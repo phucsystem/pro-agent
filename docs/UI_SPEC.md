@@ -6,71 +6,41 @@
 
 ## 1. Interface Flow
 
-```
-                         ┌─── Direct API Client (scripts, apps, agents)
-                         │        │
-                         │    POST /chat
-                         │    { message, sender, session_id? }
-                         │        │
-                         │        ▼
-                         │   ┌──────────────┐
-                         │   │  Auth Guard   │──── 401 Unauthorized
-                         │   │ Bearer Token  │
-                         │   └──────┬───────┘
-                         │          │
-  Typebot / n8n ─────────┤          │
-       │                 │          ▼
-   POST /webhook         │   ┌──────────────┐
-   { event, message,     │   │   Normalize   │
-     conversation }      │   │   Input       │
-       │                 │   └──────┬───────┘
-       │                 │          │
-       ▼                 │     (content, sender, thread_id)
-  ┌──────────┐           │          │
-  │ Skip if  │           │          ▼
-  │ agent msg│           │   ┌──────────────┐
-  └────┬─────┘           │   │  Load SOUL.md │
-       │                 │   │  + agent.yaml │
-       └─────────────────┘   └──────┬───────┘
-                                    │
-                                    ▼
-                             ┌──────────────┐
-                             │  pgai Memory  │
-                             │  Retrieval    │
-                             │  - top-k turns│
-                             │  - user facts │
-                             └──────┬───────┘
-                                    │
-                                    ▼
-                             ┌──────────────┐
-                             │  LangGraph    │
-                             │  Agent Loop   │◄──────┐
-                             │  (LLM call)   │       │
-                             └──────┬───────┘       │
-                                    │               │
-                              ┌─────┴─────┐         │
-                              │ Tool call? │         │
-                              └─────┬─────┘         │
-                               yes  │  no           │
-                                ▼   │               │
-                         ┌──────────┐│              │
-                         │ MCP Tool ││              │
-                         │ Execute  │├──────────────┘
-                         └──────────┘│
-                                     │
-                                     ▼
-                             ┌──────────────┐
-                             │  Store Turn   │
-                             │  + Embedding  │
-                             │  Log Langfuse │
-                             └──────┬───────┘
-                                    │
-                                    ▼
-                             ┌──────────────┐
-                             │  Return JSON  │
-                             │  Response     │
-                             └──────────────┘
-```
+```mermaid
+flowchart TD
+    A["Client Request<br/>Direct API or Webhook"]
+    B["POST /chat<br/>Direct API Client<br/>scripts, apps, agents"]
+    C["POST /webhook<br/>Typebot / n8n"]
+
+    A --> B
+    A --> C
+
+    B --> D["Auth Guard<br/>Bearer Token"]
+    C --> E["Skip if<br/>agent msg"]
+
+    D -->|Invalid| D_err["401 Unauthorized"]
+    D -->|Valid| F["Normalize Input<br/>content, sender, thread_id"]
+    E -->|Skipped| E_skip["200 skipped: true"]
+    E -->|Continue| F
+
+    F --> G["Load SOUL.md<br/>+ agent.yaml"]
+    G --> H["pgai Memory Retrieval<br/>- top-k turns<br/>- user facts"]
+    H --> I["Build Prompt<br/>identity + memory + current msg"]
+    I --> J["LangGraph Agent Loop<br/>LLM Call<br/>provider/model routing"]
+
+    J --> K{Tool calls?}
+    K -->|Yes| L["MCP Tool Execute<br/>web_search, github, file_io"]
+    L --> L_loop["Return to Agent Loop"]
+    L_loop --> J
+
+    K -->|No| M["Store Turn<br/>+ Embedding<br/>Log Langfuse"]
+    M --> N["Return JSON Response<br/>reply, agent, timestamp,<br/>tool_calls?"]
+
+    style D fill:#ffebee
+    style F fill:#fff3e0
+    style J fill:#e8f5e9
+    style N fill:#c8e6c9
+
 
 ---
 

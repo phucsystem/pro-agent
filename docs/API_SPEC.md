@@ -520,94 +520,39 @@ litellm.completion(
 
 ## 5. Request Lifecycle (Complete)
 
-```
-┌─────────────────────────────────────────────────────┐
-│  HTTP Request (POST /chat or POST /webhook)         │
-└───────────┬─────────────────────────────────────────┘
-            ▼
-┌─────────────────────┐
-│ 1. Auth Middleware   │──── 401 if invalid
-│    (FR-05)           │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 2. Input Validation  │──── 400 if invalid
-│    + Normalization   │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 3. Webhook: skip if  │──── 200 { skipped: true }
-│    sender_is_agent   │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 4. Session Upsert    │
-│    (FR-08)           │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 5. Identity Load     │
-│    (FR-01)           │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 6. Embed Message     │──── If fails: continue without embedding
-│    (text-embedding)  │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 7. Memory Retrieval  │──── If pgai down: empty context
-│    (FR-06, FR-07)    │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 8. Build Prompt      │
-│    identity + memory │
-│    + user facts +    │
-│    current message   │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 9. LangGraph Agent   │◄────┐
-│    LLM Invocation    │     │
-│    (FR-16)           │     │
-└───────────┬─────────┘     │
-            │               │
-      ┌─────┴─────┐        │
-      │Tool calls? │        │
-      └──┬────┬───┘        │
-     yes │    │ no          │
-         ▼    │             │
-┌─────────────┐│            │
-│ 10. MCP Tool ││           │
-│  + Guardrail │├───────────┘
-│  (FR-09–13)  ││
-│  + Log (14)  ││
-└──────────────┘│
-                │
-                ▼
-┌─────────────────────┐
-│ 11. Validate Output  │──── If fails: fallback to raw text
-│     (FR-15)          │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 12. Store Turns      │
-│     + Embeddings     │
-│     + User Facts     │
-│     (FR-06, FR-07)   │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 13. Log to Langfuse  │
-│     (FR-14, FR-17)   │
-└───────────┬─────────┘
-            ▼
-┌─────────────────────┐
-│ 14. Return Response  │
-│     200 OK           │
-└─────────────────────┘
-```
+```mermaid
+flowchart TD
+    A["HTTP Request<br/>POST /chat or /webhook"] --> B["Auth Middleware<br/>FR-05"]
+    B -->|Invalid| B_err["401 Unauthorized"]
+    B -->|Valid| C["Input Validation<br/>+ Normalization"]
+    C -->|Invalid| C_err["400 Bad Request"]
+    C -->|Valid| D{Webhook?}
+    D -->|Yes, agent msg| D_skip["200 skipped: true"]
+    D -->|No| E["Session Upsert<br/>FR-08"]
+    E --> F["Identity Load<br/>FR-01"]
+    F --> G["Embed Message<br/>text-embedding"]
+    G -->|Fails| G_cont["Continue without embedding"]
+    G -->|Success| H["Memory Retrieval<br/>FR-06, FR-07"]
+    G_cont --> H
+    H -->|pgai down| H_empty["Empty context"]
+    H -->|Success| I["Build Prompt<br/>identity + memory + facts"]
+    H_empty --> I
+    I --> J["LangGraph Agent<br/>LLM Invocation FR-16"]
+    J --> K{Tool calls?}
+    K -->|Yes| L["MCP Tool Execute<br/>+ Guardrails FR-09-13"]
+    L --> L_log["Log FR-14"]
+    L_log --> J
+    K -->|No| M["Validate Output<br/>FR-15"]
+    M -->|Fails| M_fallback["Use raw text"]
+    M -->|Success| N["Store Turns<br/>+ Embeddings FR-06, FR-07"]
+    M_fallback --> N
+    N --> O["Log to Langfuse<br/>FR-14, FR-17"]
+    O --> P["Return 200 OK<br/>ChatResponse"]
+    style B fill:#ffebee
+    style C fill:#fff3e0
+    style J fill:#e8f5e9
+    style P fill:#c8e6c9
+
 
 ---
 
