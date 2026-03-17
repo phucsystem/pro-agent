@@ -188,6 +188,7 @@ No auth required. Returns service status, uptime, memory stats, available tools.
 | | | **DeepSeek R1:** Use `deepseek-reasoner` to enable `<think>` blocks in responses |
 | `LLM_API_KEY` | Required | API key for LLM provider |
 | `POSTGRES_URL` | `postgresql://agent:agent@localhost:5432/pro_agent` | Database connection string |
+| `TABLE_PREFIX` | `""` | Prefix for all DB table names (multi-agent isolation). Only `[a-z0-9_]` allowed. |
 | `PORT` | `8000` | Server port |
 
 ### Environment Variables (Embeddings)

@@ -1,7 +1,8 @@
+import re
 import yaml
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 def _load_agent_yaml() -> dict:
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="deepseek", alias="LLM_PROVIDER")
     llm_model: str = Field(default="deepseek-chat", alias="LLM_MODEL")
     llm_base_url: str = Field(default="https://api.deepseek.com/v1", alias="LLM_BASE_URL")
+    table_prefix: str = Field(default="", alias="TABLE_PREFIX")
     port: int = Field(default=8000, alias="PORT")
     postgres_url: str = Field(
         default="postgresql://agent:agent@localhost:5432/pro_agent",
@@ -53,6 +55,13 @@ class Settings(BaseSettings):
     tools_timeout_seconds: int = _tools_cfg.get("timeout_seconds", 30)
     tools_enabled: list[str] = _tools_cfg.get("enabled", [])
     cost_max_per_request: float = _cost_cfg.get("max_per_request", 1.00)
+
+    @field_validator("table_prefix")
+    @classmethod
+    def validate_table_prefix(cls, value: str) -> str:
+        if value and not re.match(r"^[a-z0-9_]+$", value):
+            raise ValueError("TABLE_PREFIX must match ^[a-z0-9_]+$ (lowercase, digits, underscores)")
+        return value
 
     class Config:
         env_file = ".env"

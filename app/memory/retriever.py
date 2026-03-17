@@ -1,5 +1,6 @@
 import logging
 from app.db.pool import get_pool
+from app.db.tables import CONVERSATION_TURNS, USER_FACTS
 from app.memory.embeddings import generate_embedding
 from app.config import settings
 
@@ -18,10 +19,10 @@ async def retrieve_relevant_turns(
 
     async with get_pool().connection() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT role, content, created_at,
                    1 - (embedding <=> $1::vector) AS similarity
-            FROM conversation_turns
+            FROM {CONVERSATION_TURNS}
             WHERE user_id = $2
               AND embedding IS NOT NULL
               AND 1 - (embedding <=> $1::vector) > $3
@@ -45,9 +46,9 @@ async def retrieve_user_facts(
 
     async with get_pool().connection() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT fact
-            FROM user_facts
+            FROM {USER_FACTS}
             WHERE user_id = $1
               AND embedding IS NOT NULL
               AND 1 - (embedding <=> $2::vector) > $3

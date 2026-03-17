@@ -19,11 +19,12 @@ async def log_tool_call(
     if turn_id:
         try:
             from app.db.pool import get_pool
+            from app.db.tables import TOOL_CALL_LOGS
             result_json = result if isinstance(result, dict) else {"output": str(result)[:2000]}
             async with get_pool().connection() as conn:
                 await conn.execute(
-                    """
-                    INSERT INTO tool_call_logs
+                    f"""
+                    INSERT INTO {TOOL_CALL_LOGS}
                         (turn_id, tool_name, parameters, result, success, duration_ms, cost)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)
                     """,

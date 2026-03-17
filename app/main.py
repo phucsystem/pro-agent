@@ -68,12 +68,13 @@ async def health():
 
     try:
         from app.db.pool import get_pool
+        from app.db.tables import SESSIONS, CONVERSATION_TURNS, USER_FACTS
         async with get_pool().connection() as conn:
             row = await conn.fetchrow(
-                "SELECT "
-                "(SELECT count(*) FROM conversation_turns) AS turns,"
-                "(SELECT count(*) FROM sessions) AS sessions,"
-                "(SELECT count(*) FROM user_facts) AS facts"
+                f"SELECT "
+                f"(SELECT count(*) FROM {CONVERSATION_TURNS}) AS turns,"
+                f"(SELECT count(*) FROM {SESSIONS}) AS sessions,"
+                f"(SELECT count(*) FROM {USER_FACTS}) AS facts"
             )
             memory_stats = MemoryStats(
                 total_turns=row["turns"],
