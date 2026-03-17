@@ -37,11 +37,20 @@ async def agent_node(state: AgentState) -> dict:
     except Exception:
         pass
 
+    # Build LiteLLM model string: provider/model (e.g. deepseek/deepseek-chat)
+    # LiteLLM requires the provider prefix for proper routing
+    provider = settings.llm_provider.lower()
+    model_name = settings.llm_model
+    if "/" not in model_name:
+        litellm_model = f"{provider}/{model_name}"
+    else:
+        litellm_model = model_name  # already prefixed (e.g. openrouter/deepseek/deepseek-chat)
+
     kwargs = dict(
-        model=settings.llm_model,
+        model=litellm_model,
         messages=litellm_messages,
         api_key=settings.llm_api_key,
-        api_base=settings.llm_base_url,
+        api_base=settings.llm_base_url or None,
         temperature=settings.model_temperature,
         max_tokens=settings.model_max_tokens,
     )
@@ -50,6 +59,11 @@ async def agent_node(state: AgentState) -> dict:
 
     response = await litellm.acompletion(**kwargs)
     msg = response.choices[0].message
+
+    # Handle DeepSeek R1 reasoning_content (deepseek-reasoner model)
+    reasoning = getattr(msg, "reasoning_content", None)
+    if reasoning:
+        msg.content = f"<think>\n{reasoning}\n</think>\n\n{msg.content or ''}"
 
     # Enforce tool call limit per turn
     tool_call_count = state.get("tool_call_count", 0)
