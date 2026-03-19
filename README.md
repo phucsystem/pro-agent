@@ -187,7 +187,11 @@ No auth required. Returns service status, uptime, memory stats, available tools.
 | | | **Note:** LiteLLM combines as `{provider}/{model}` for routing (e.g. `deepseek/deepseek-chat`) |
 | | | **DeepSeek R1:** Use `deepseek-reasoner` to enable `<think>` blocks in responses |
 | `LLM_API_KEY` | Required | API key for LLM provider |
+| `LLM_TIMEOUT` | `60` | LLM call timeout in seconds (prevents hanging on slow providers) |
 | `POSTGRES_URL` | `postgresql://agent:agent@localhost:5432/pro_agent` | Database connection string |
+| `DB_POOL_MIN` | `2` | Minimum DB connection pool size |
+| `DB_POOL_MAX` | `10` | Maximum DB connection pool size |
+| `DB_STATEMENT_TIMEOUT` | `30` | DB query timeout in seconds |
 | `TABLE_PREFIX` | `""` | Prefix for all DB table names (multi-agent isolation). Only `[a-z0-9_]` allowed. |
 | `PORT` | `8000` | Server port |
 
@@ -196,6 +200,7 @@ No auth required. Returns service status, uptime, memory stats, available tools.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model (configurable) |
+| `EMBEDDING_DIMENSION` | `1536` | Vector dimension (must match embedding model output) |
 | `EMBEDDING_API_KEY` | `${LLM_API_KEY}` | API key for embedding provider |
 | `EMBEDDING_API_BASE` | `""` | Custom base URL (e.g., for Ollama) |
 
@@ -336,6 +341,7 @@ pro-agent/
 │   ├── agent/
 │   │   ├── graph.py          # LangGraph agent definition
 │   │   ├── nodes.py          # Agent nodes (LLM, tools)
+│   │   ├── pipeline.py       # Shared agent pipeline (/chat, /webhook)
 │   │   └── state.py          # Agent state schema
 │   ├── memory/
 │   │   ├── embeddings.py     # LiteLLM-based embedding
@@ -352,7 +358,8 @@ pro-agent/
 │   │   ├── requests.py       # Request schemas
 │   │   └── responses.py      # Response schemas
 │   ├── db/
-│   │   └── pool.py           # async psycopg pool
+│   │   ├── pool.py           # async psycopg pool + DDL
+│   │   └── tables.py         # Table name constants (TABLE_PREFIX)
 │   └── observability/
 │       └── langfuse.py       # Optional tracing
 ├── db/

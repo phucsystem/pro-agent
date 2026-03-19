@@ -2,7 +2,7 @@ import logging
 import asyncio
 from app.db.pool import get_pool
 from app.db.tables import SESSIONS, CONVERSATION_TURNS, USER_FACTS
-from app.memory.embeddings import generate_embedding
+from app.memory.embeddings import generate_embedding, format_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ async def store_turn(
             RETURNING id
             """,
             session_id, user_id, role, content,
-            f"[{','.join(str(v) for v in embedding)}]" if embedding else None,
+            format_embedding(embedding) if embedding else None,
         )
         return str(row["id"])
 
@@ -70,6 +70,6 @@ async def store_user_fact(user_id: str, fact: str, source: str = "chat") -> None
             VALUES ($1, $2, $3::vector, $4)
             """,
             user_id, fact,
-            f"[{','.join(str(v) for v in embedding)}]" if embedding else None,
+            format_embedding(embedding) if embedding else None,
             source,
         )

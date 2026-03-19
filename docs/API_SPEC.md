@@ -269,6 +269,7 @@ async def auth_middleware(request):
 | `LLM_PROVIDER` | `deepseek` | LLM provider name (deepseek, openai, anthropic, ollama, etc.) |
 | `LLM_MODEL` | `deepseek-chat` | Model identifier (e.g., gpt-4o, claude-sonnet-4-20250514) |
 | `LLM_BASE_URL` | `https://api.deepseek.com/v1` | LLM provider base URL |
+| `LLM_TIMEOUT` | `60` | LLM API request timeout in seconds |
 | `PORT` | `8000` | Server port |
 
 **Database:**
@@ -276,12 +277,17 @@ async def auth_middleware(request):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTGRES_URL` | `postgresql://agent:agent@localhost:5432/pro_agent` | PostgreSQL connection string |
+| `DB_POOL_MIN` | `2` | Minimum number of connections in pool |
+| `DB_POOL_MAX` | `10` | Maximum number of connections in pool |
+| `DB_STATEMENT_TIMEOUT` | `30` | Statement execution timeout in seconds |
+| `TABLE_PREFIX` | `""` (empty) | Optional prefix for all table names (for multi-agent DB isolation) |
 
 **Embeddings (configurable via env vars):**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model name via LiteLLM |
+| `EMBEDDING_DIMENSION` | `1536` | Expected embedding vector dimension (validates API output) |
 | `EMBEDDING_API_KEY` | `""` (uses `LLM_API_KEY`) | API key for embedding provider (falls back to LLM_API_KEY if empty) |
 | `EMBEDDING_API_BASE` | `""` (provider default) | Custom base URL for embedding API (e.g., for self-hosted embeddings) |
 

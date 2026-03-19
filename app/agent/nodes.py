@@ -53,6 +53,7 @@ async def agent_node(state: AgentState) -> dict:
         api_base=settings.llm_base_url or None,
         temperature=settings.model_temperature,
         max_tokens=settings.model_max_tokens,
+        timeout=settings.llm_timeout,
     )
     if tools:
         kwargs["tools"] = tools
