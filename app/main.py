@@ -72,9 +72,10 @@ async def health():
         async with get_pool().connection() as conn:
             row = await conn.fetchrow(
                 f"SELECT "
-                f"(SELECT count(*) FROM {CONVERSATION_TURNS}) AS turns,"
-                f"(SELECT count(*) FROM {SESSIONS}) AS sessions,"
-                f"(SELECT count(*) FROM {USER_FACTS}) AS facts"
+                f"(SELECT GREATEST(COALESCE(reltuples, 0), 0)::bigint FROM pg_class WHERE relname = $1) AS turns,"
+                f"(SELECT GREATEST(COALESCE(reltuples, 0), 0)::bigint FROM pg_class WHERE relname = $2) AS sessions,"
+                f"(SELECT GREATEST(COALESCE(reltuples, 0), 0)::bigint FROM pg_class WHERE relname = $3) AS facts",
+                CONVERSATION_TURNS, SESSIONS, USER_FACTS,
             )
             memory_stats = MemoryStats(
                 total_turns=row["turns"],
@@ -102,11 +103,13 @@ async def health():
 
 @app.post("/chat", dependencies=[Depends(verify_bearer_token)])
 async def chat(request: ChatRequest):
+    from app.agent.pipeline import run_agent
+
     timestamp = datetime.now(timezone.utc).isoformat()
     logger.info(f"[/chat] sender={request.sender} session={request.session_id} msg={request.message[:80]!r}")
 
     try:
-        reply, tool_calls = await _run_agent(
+        reply, tool_calls = await run_agent(
             content=request.message,
             sender=request.sender,
             thread_id=request.session_id,
@@ -123,6 +126,8 @@ async def chat(request: ChatRequest):
 
 @app.post("/webhook", dependencies=[Depends(verify_bearer_token)])
 async def webhook(request: WebhookRequest):
+    from app.agent.pipeline import run_agent
+
     msg = request.message
     if not msg.content:
         raise HTTPException(status_code=400, detail="message.content is required")
@@ -140,7 +145,7 @@ async def webhook(request: WebhookRequest):
     logger.info(f"[/webhook] event={request.event} sender={sender} conv={thread_id} msg={msg.content[:80]!r}")
 
     try:
-        reply, _ = await _run_agent(
+        reply, _ = await run_agent(
             content=msg.content,
             sender=sender,
             thread_id=thread_id,
@@ -150,76 +155,3 @@ async def webhook(request: WebhookRequest):
         raise HTTPException(status_code=500, detail="LLM request failed")
 
     return WebhookResponse(reply=reply, conversation_id=thread_id, timestamp=timestamp)
-
-
-async def _run_agent(content: str, sender: str, thread_id: str) -> tuple[str, list | None]:
-    """Shared pipeline for /chat and /webhook."""
-    from app.agent.graph import get_graph
-    from app.identity import load_identity
-
-    system_prompt = load_identity()
-
-    # Memory retrieval (graceful degradation)
-    memory_context = ""
-    try:
-        from app.memory.retriever import build_memory_context
-        memory_context = await build_memory_context(content, sender)
-    except Exception as exc:
-        logger.warning(f"Memory retrieval failed (degraded): {exc}")
-
-    if memory_context:
-        system_prompt = f"{system_prompt}\n\n{memory_context}"
-
-    graph = get_graph()
-    result = await graph.ainvoke(
-        {
-            "messages": [{"role": "user", "content": content}],
-            "system_prompt": system_prompt,
-            "sender": sender,
-        },
-        config={"configurable": {"thread_id": thread_id}},
-    )
-
-    last_message = result["messages"][-1]
-    reply_content = last_message.content
-    if not reply_content:
-        raise ValueError("LLM returned empty response")
-    reply = reply_content if isinstance(reply_content, str) else str(reply_content)
-
-    # Store turns (fire-and-forget)
-    try:
-        from app.memory.store import store_turn_pair
-        await store_turn_pair(
-            thread_id=thread_id,
-            user_id=sender,
-            user_content=content,
-            assistant_content=reply,
-        )
-    except Exception as exc:
-        logger.warning(f"Memory store failed: {exc}")
-
-    # Extract tool calls summary from message history
-    tool_calls_summary = _extract_tool_calls(result["messages"])
-
-    return reply, tool_calls_summary or None
-
-
-def _extract_tool_calls(messages: list) -> list[dict]:
-    from app.models.responses import ToolCallSummary
-    summaries = []
-    tool_results: dict[str, str] = {}
-
-    for msg in messages:
-        if hasattr(msg, "type") and msg.type == "tool":
-            tool_results[getattr(msg, "tool_call_id", "")] = str(msg.content)[:200]
-
-    for msg in messages:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                result_text = tool_results.get(tc.get("id", ""), "")
-                summaries.append(ToolCallSummary(
-                    tool=tc.get("name", "unknown"),
-                    result=result_text,
-                    success=bool(result_text) and not result_text.startswith("Error:"),
-                ))
-    return summaries

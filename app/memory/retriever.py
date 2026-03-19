@@ -1,7 +1,7 @@
 import logging
 from app.db.pool import get_pool
 from app.db.tables import CONVERSATION_TURNS, USER_FACTS
-from app.memory.embeddings import generate_embedding
+from app.memory.embeddings import generate_embedding, format_embedding
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ async def retrieve_relevant_turns(
 ) -> list[dict]:
     k = top_k or settings.memory_top_k_turns
     thresh = threshold or settings.memory_similarity_threshold
-    emb_str = f"[{','.join(str(v) for v in embedding)}]"
+    emb_str = format_embedding(embedding)
 
     async with get_pool().connection() as conn:
         rows = await conn.fetch(
@@ -42,7 +42,7 @@ async def retrieve_user_facts(
 ) -> list[str]:
     k = top_k or settings.memory_top_k_facts
     thresh = threshold or settings.memory_similarity_threshold
-    emb_str = f"[{','.join(str(v) for v in embedding)}]"
+    emb_str = format_embedding(embedding)
 
     async with get_pool().connection() as conn:
         rows = await conn.fetch(

@@ -1,9 +1,8 @@
 import logging
-from functools import lru_cache
-from langchain_core.tools import BaseTool
+import httpx
+from langchain_core.tools import BaseTool, tool
 
 logger = logging.getLogger(__name__)
-_tools: list[BaseTool] = []
 
 
 def _build_web_search_tool() -> BaseTool | None:
@@ -19,26 +18,55 @@ def _build_github_tool() -> BaseTool | None:
     from app.config import settings
     if not settings.github_token:
         return None
-    try:
-        from langchain_community.tools.github.tool import GitHubAction
-        from langchain_community.utilities.github import GitHubAPIWrapper
-        wrapper = GitHubAPIWrapper(github_app_private_key=settings.github_token)
-        return GitHubAction(api_wrapper=wrapper, mode="get_issues", name="github")
-    except Exception as exc:
-        logger.warning(f"github tool unavailable: {exc}")
-        return None
+
+    @tool
+    async def github(query: str) -> str:
+        """Search GitHub issues and repositories. Query format: 'owner/repo' for repo info, or 'owner/repo issues' for open issues."""
+        token = settings.github_token
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        try:
+            parts = query.strip().split()
+            repo = parts[0] if parts else query
+            action = parts[1] if len(parts) > 1 else "info"
+
+            async with httpx.AsyncClient(timeout=15) as client:
+                if action == "issues":
+                    url = f"https://api.github.com/repos/{repo}/issues?state=open&per_page=10"
+                    response = await client.get(url, headers=headers)
+                    response.raise_for_status()
+                    issues = response.json()
+                    if not issues:
+                        return f"No open issues in {repo}"
+                    lines = [f"#{iss['number']}: {iss['title']}" for iss in issues[:10]]
+                    return f"Open issues in {repo}:\n" + "\n".join(lines)
+                else:
+                    url = f"https://api.github.com/repos/{repo}"
+                    response = await client.get(url, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
+                    return (
+                        f"{data['full_name']}: {data.get('description', 'No description')}\n"
+                        f"Stars: {data['stargazers_count']} | Forks: {data['forks_count']} | "
+                        f"Language: {data.get('language', 'N/A')}"
+                    )
+        except httpx.HTTPStatusError as exc:
+            return f"Error: GitHub API returned {exc.response.status_code}"
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    return github
 
 
-def _build_file_io_tool() -> BaseTool | None:
+def _build_file_io_tool() -> list[BaseTool] | None:
     from app.config import settings
     from pathlib import Path
     try:
-        from langchain_community.tools import ReadFileTool, WriteFileTool
         sandbox = Path(settings.file_io_sandbox_dir)
         sandbox.mkdir(parents=True, exist_ok=True)
-
-        # Custom sandboxed tool wrapping ReadFileTool
-        from langchain_core.tools import tool
 
         @tool
         def file_read(path: str) -> str:
@@ -75,20 +103,20 @@ def load_tools() -> list[BaseTool]:
     result = []
     for tool_name in settings.tools_enabled:
         if tool_name == "web_search":
-            t = _build_web_search_tool()
-            if t:
-                result.append(t)
+            built = _build_web_search_tool()
+            if built:
+                result.append(built)
         elif tool_name == "github":
-            t = _build_github_tool()
-            if t:
-                result.append(t)
+            built = _build_github_tool()
+            if built:
+                result.append(built)
         elif tool_name == "file_io":
-            ts = _build_file_io_tool()
-            if ts:
-                if isinstance(ts, list):
-                    result.extend(ts)
+            built = _build_file_io_tool()
+            if built:
+                if isinstance(built, list):
+                    result.extend(built)
                 else:
-                    result.append(ts)
+                    result.append(built)
     logger.info(f"Loaded {len(result)} tools: {[t.name for t in result]}")
     return result
 
