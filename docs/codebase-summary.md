@@ -1,12 +1,12 @@
 # Pro Agent Codebase Summary
 
-**Version:** 1.0.0 | **Total LOC:** ~988 | **Modules:** 13 | **Test Coverage:** 85%+
+**Version:** 1.0.0 | **Total LOC:** ~1008 | **Modules:** 14 | **Test Coverage:** 85%+
 
 ---
 
 ## Overview
 
-Pro Agent is organized into 13 self-contained modules under `app/`, totaling ~988 lines of production code. The architecture follows a clean layered pattern: HTTP layer (main) → Auth → Identity → Agent pipeline → Memory → Tools → Database.
+Pro Agent is organized into 14 self-contained modules under `app/`, totaling ~1008 lines of production code. The architecture follows a clean layered pattern: HTTP layer (main) → Auth → Identity → Agent pipeline (orchestration) → Memory → Tools → Database.
 
 ---
 
@@ -119,7 +119,19 @@ Pro Agent is organized into 13 self-contained modules under `app/`, totaling ~98
 
 ---
 
-### 6. agent/ (agent orchestration) — 90 LOC
+### 6. agent/ (agent orchestration) — 110 LOC
+
+#### agent/pipeline.py (20 LOC)
+
+**Responsibility:** Shared agent execution pipeline extracted from main.py.
+
+**Key Component:**
+- `_run_agent()` — Core pipeline: load identity, retrieve memory, invoke graph, store results
+- Handles both /chat and /webhook endpoints
+
+**Dependencies:** app.agent.graph, app.memory, app.identity, app.db
+
+---
 
 #### agent/state.py (30 LOC)
 
@@ -173,16 +185,18 @@ Pro Agent is organized into 13 self-contained modules under `app/`, totaling ~98
 
 #### memory/embeddings.py (40 LOC)
 
-**Responsibility:** Generate embeddings via LiteLLM.
+**Responsibility:** Generate and format embeddings via LiteLLM.
 
-**Key Component:**
+**Key Components:**
 - `generate_embedding()` — Query LiteLLM embedding API
+- `format_embedding()` — Convert vector to pgvector-compatible string
 - Configurable model via EMBEDDING_MODEL env var
 - Fallback to LLM_API_KEY if EMBEDDING_API_KEY not set
 
 **Features:**
 - Caching to avoid redundant API calls
 - Graceful error handling (returns None if API fails)
+- Dimension validation against EMBEDDING_DIMENSION
 - Supports OpenAI, HuggingFace, Ollama, etc.
 
 **Dependencies:** litellm, app.config, functools
@@ -244,14 +258,14 @@ Pro Agent is organized into 13 self-contained modules under `app/`, totaling ~98
 
 **Key Components:**
 - `_build_web_search_tool()` — DuckDuckGo via LangChain
-- `_build_github_tool()` — GitHub API via LangChain
+- `_build_github_tool()` — GitHub API via httpx with PAT auth
 - `_build_file_io_tool()` — Sandboxed file read/write
-- `get_registered_tools()` — Return list of available BaseTool instances
+- `get_registered_tools()` and `load_tools()` — Return list of available BaseTool instances
 
 **Tool Registration:**
 1. web_search: DuckDuckGoSearchRun (no auth required)
-2. github: GitHubAction (requires GITHUB_TOKEN)
-3. file_io: Custom FileIOTool (restricted to FILE_IO_SANDBOX_DIR)
+2. github: Custom async tool using httpx (requires GITHUB_TOKEN for PAT authentication)
+3. file_io: Custom file read/write tools (restricted to FILE_IO_SANDBOX_DIR)
 
 **Features:**
 - Graceful degradation: if tool unavailable, skip and log warning
@@ -401,24 +415,26 @@ graph TD
     A --> C["config.py<br/>Pydantic settings"]
     A --> D["identity.py<br/>SOUL.md + agent.yaml"]
     A --> E["models/<br/>requests, responses"]
-    A --> F["agent/graph.py<br/>LangGraph"]
+    A --> P["agent/pipeline.py<br/>_run_agent pipeline"]
+    P --> F["agent/graph.py<br/>LangGraph"]
     F --> F1["agent/state.py<br/>AgentState"]
     F --> G["agent/nodes.py<br/>LiteLLM provider/model"]
     G --> G1["litellm<br/>acompletion"]
     F --> H["tools/registry.py<br/>Tool registration"]
-    A --> I["memory/embeddings.py<br/>LiteLLM text-embedding"]
-    A --> J["memory/retriever.py<br/>pgvector similarity"]
-    A --> K["memory/store.py<br/>Turn + fact persistence"]
+    P --> I["memory/embeddings.py<br/>LiteLLM text-embedding"]
+    P --> J["memory/retriever.py<br/>pgvector similarity"]
+    P --> K["memory/store.py<br/>Turn + fact persistence"]
     J --> J1["db/pool.py<br/>psycopg AsyncPool"]
     K --> J1
-    H --> H1["langchain_community<br/>Tool adapters"]
-    A --> L["tools/guardrails.py<br/>Rate limits, timeout"]
-    A --> M["tools/logger.py<br/>tool_call_logs"]
+    H --> H1["langchain_community<br/>+ httpx for tools"]
+    P --> L["tools/guardrails.py<br/>Rate limits, timeout"]
+    P --> M["tools/logger.py<br/>tool_call_logs"]
     M --> J1
-    A --> N["observability/langfuse.py<br/>Optional tracing"]
+    P --> N["observability/langfuse.py<br/>Optional tracing"]
     style G fill:#fff9c4
     style G1 fill:#ffccbc
     style J1 fill:#e1f5fe
+    style P fill:#fff3e0
 
 
 ---
@@ -428,15 +444,15 @@ graph TD
 ```mermaid
 flowchart TD
     A["HTTP Request<br/>POST /chat"] --> B["auth.py<br/>verify token"]
-    B -->|Valid| C["main.py:_run_agent"]
+    B -->|Valid| C["agent/pipeline.py<br/>_run_agent"]
     C --> D["identity.py<br/>load SOUL.md + agent.yaml"]
-    C --> E["memory/embeddings.py<br/>embed user message"]
+    C --> E["memory/embeddings.py<br/>embed user message<br/>+ format_embedding"]
     E --> F["memory/retriever.py<br/>pgvector similarity"]
     F --> G["db/pool.py<br/>PostgreSQL query"]
     C --> H["agent/graph.py<br/>LangGraph invocation"]
     H --> I["agent/nodes.py<br/>LiteLLM call<br/>provider/model routing"]
     I -->|Response| J["output/validator.py<br/>validate response"]
-    I -->|Tool calls| K["tools/registry.py<br/>execute tools"]
+    I -->|Tool calls| K["tools/registry.py<br/>execute tools<br/>httpx for GitHub"]
     K --> L["tools/guardrails.py<br/>enforce limits"]
     L --> I
     J --> M["memory/store.py<br/>persist turns<br/>fire-and-forget"]
@@ -564,6 +580,7 @@ pytest tests/ --cov=app --cov-report=term-missing
 | app/agent/nodes.py | 40 | Agent execution |
 | app/agent/state.py | 30 | State schema |
 | app/agent/graph.py | 37 | Graph definition |
+| app/agent/pipeline.py | 20 | Shared pipeline |
 | app/config.py | 80 | Configuration |
 | app/identity.py | 50 | Personality loading |
 | app/memory/embeddings.py | 40 | Embedding generation |
@@ -574,7 +591,7 @@ pytest tests/ --cov=app --cov-report=term-missing
 | app/tools/guardrails.py | 40 | Execution limits |
 | app/tools/logger.py | 20 | Tool audit logging |
 | app/observability/langfuse.py | 50 | Tracing |
-| **Total** | **988** | **~1 KLOC** |
+| **Total** | **1008** | **~1 KLOC** |
 
 ---
 

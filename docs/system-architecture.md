@@ -283,7 +283,8 @@ Connection Pool (psycopg AsyncConnectionPool)
 
 **Indexes:**
 - `idx_turns_user_id` — Fast lookup by user
-- `idx_turns_embedding` — IVFFlat vector index (after 10k+ rows)
+- `idx_turns_embedding` — HNSW vector index on embedding column (cosine distance)
+- `idx_facts_embedding` — HNSW vector index on embedding column (cosine distance)
 - `idx_sessions_last_active` — Recent sessions
 - `idx_tool_logs_created_at` — Time-based queries
 
@@ -447,7 +448,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A["GET /health<br/>no auth required"] --> B["Compute Uptime<br/>seconds since start"]
-    B --> C["Query PostgreSQL<br/>turn count, session count,<br/>fact count"]
+    B --> C["Query PostgreSQL<br/>pg_class.reltuples for<br/>turn/session/fact counts"]
     C --> D["Test DB<br/>connectivity"]
     D --> E["Get Tools<br/>get_registered_tools"]
     E --> F["Aggregate Costs<br/>from tool_call_logs"]
@@ -456,6 +457,7 @@ flowchart TD
     style A fill:#e3f2fd
     style H fill:#c8e6c9
 
+**Implementation Note:** Memory stats use `pg_class.reltuples` for fast estimation of row counts without full table scans. This provides near-instant responses even with large datasets.
 
 ---
 
